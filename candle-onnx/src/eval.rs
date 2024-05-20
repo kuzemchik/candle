@@ -444,6 +444,58 @@ pub fn simple_eval(
                 };
                 values.insert(node.output[0].clone(), ys);
             }
+            // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Pad
+            "Pad" => {
+                let input = get(&node.input[0])?;
+                let pads_opt = get_attr_opt::<[i64]>(node, "pads")?;
+                let mode = get_attr_opt::<str>(node, "mode")?;
+                let constant_value = get_attr_opt::<f32>(node, "constant_value")?;
+                let axes_opt = get_attr_opt::<[i64]>(node, "axes")?;
+                if let Some(pads) = pads_opt {
+                    let dims = input.dims();
+                    let num_axes = dims.len();
+                    let all_axes:Vec<usize> = (0..num_axes).collect();
+
+
+                    let axes = axes_opt.map(|axes|{
+                        axes.iter().map(|axis| 
+                            if *axis < 0 {
+                                num_axes - *axis as usize
+                            } else {
+                                *axis as usize
+                            }
+                        ).collect::<Vec<_>>()
+                    }).unwrap_or(all_axes);
+                    
+                    // TODO: Support negative padding.
+                    let pads = pads.iter().map(|&v| v as usize).collect::<Vec<_>>();
+
+                    
+                    let output = match mode {
+                        None | Some("constant") =>  {
+                            axes.iter().enumerate().fold(Ok(input.clone()), |tensor,(idx,axis)| {
+                                if let Some(val) = constant_value {
+                                    tensor?.pad_with_const(*axis, pads[idx], pads[idx+ num_axes], *val as f64)
+                                } else {
+                                    tensor?.pad_with_zeros(*axis,pads[idx],pads[idx+ num_axes])
+                                }
+                            })
+                        },
+
+                        Some("edge") => {
+                            axes.iter().enumerate().fold(Ok(input.clone()), |tensor,(idx,axis)| {
+                                tensor?.pad_with_same(*axis,pads[idx],pads[idx+ num_axes])
+                            })
+                        },
+                        // Some("reflect") => (),
+                        // Some("wrap") => (),
+                        Some(s) => bail!("unsupported pad type {s}"),
+                    };
+                    values.insert(node.output[0].clone(), output?);
+                } else {
+                    values.insert(node.output[0].clone(), input.clone());
+                }
+            }
             "AveragePool" => {
                 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#AveragePool
                 let dilations = get_attr_opt::<[i64]>(node, "dilations")?;

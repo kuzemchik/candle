@@ -2212,6 +2212,44 @@ impl Tensor {
         Self::cat(&args, dim)
     }
 
+    /// Pad the input tensor using constant values along dimension `dim`. This adds `left` elements before the
+    /// input tensor values and `right` elements after.
+    pub fn pad_with_const<D: Dim>(
+        &self,
+        dim: D,
+        left: usize,
+        right: usize,
+        constant: f64,
+    ) -> Result<Self> {
+        if left == 0 && right == 0 {
+            Ok(self.clone())
+        } else if left == 0 {
+            let dim = dim.to_index(self.shape(), "pad_with_const")?;
+            let mut dims = self.dims().to_vec();
+            dims[dim] = right;
+            let right =
+                Tensor::ones(dims.as_slice(), self.dtype, self.device())?.affine(constant, 0.0)?;
+            Tensor::cat(&[self, &right], dim)
+        } else if right == 0 {
+            let dim = dim.to_index(self.shape(), "pad_with_const")?;
+            let mut dims = self.dims().to_vec();
+            dims[dim] = left;
+            let left =
+                Tensor::ones(dims.as_slice(), self.dtype, self.device())?.affine(constant, 0.0)?;
+            Tensor::cat(&[&left, self], dim)
+        } else {
+            let dim = dim.to_index(self.shape(), "pad_with_const")?;
+            let mut dims = self.dims().to_vec();
+            dims[dim] = left;
+            let left =
+                Tensor::ones(dims.as_slice(), self.dtype, self.device())?.affine(constant, 0.0)?;
+            dims[dim] = right;
+            let right =
+                Tensor::ones(dims.as_slice(), self.dtype, self.device())?.affine(constant, 0.0)?;
+            Tensor::cat(&[&left, self, &right], dim)
+        }
+    }
+
     /// Pad the input tensor using 0s along dimension `dim`. This adds `left` elements before the
     /// input tensor values and `right` elements after.
     pub fn pad_with_zeros<D: Dim>(&self, dim: D, left: usize, right: usize) -> Result<Self> {
